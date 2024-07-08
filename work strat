@@ -1,0 +1,87 @@
+//@version=5
+indicator("Volume Signals with RSI and Clusters", overlay=true)
+
+// Параметры индикатора
+peakThreshold = input(1.5, title="Порог пика")
+lookbackBars = input(20, title="Количество баров для расчета")
+rsiPeriod = input(14, title="Период RSI")
+clusterTolerance = input(0.01, title="Допуск кластера")
+
+// Расчет среднего объема
+averageVolume = ta.sma(volume, lookbackBars)
+volumePeak = volume >= averageVolume * peakThreshold
+
+// Расчет RSI
+rsi = ta.rsi(close, rsiPeriod)
+
+// Определение тренда по MA 200, MA 100 и MA 60
+ma200 = ta.sma(close, 200)
+ma100 = ta.sma(close, 100)
+ma60 = ta.sma(close, 60)
+isUptrend = close > ma200 and close > ma100 and close > ma60
+isDowntrend = close < ma200 and close < ma100 and close < ma60
+
+// Установка уровней RSI в зависимости от расположения цены относительно MA200
+rsiOverbought = close > ma200 ? 85 : 35
+rsiOversold = close > ma200 ? 65 : 25
+
+// Объявление массивов для кластеров объема
+var float[] buyClusters = array.new_float()
+var float[] sellClusters = array.new_float()
+
+// Функция для обновления кластеров объема
+updateClusters(clusters, newLevel) =>
+    var bool isUpdated = false
+    if array.size(clusters) > 0
+        for i = 0 to array.size(clusters) - 1
+            if math.abs(array.get(clusters, i) - newLevel) <= clusterTolerance * newLevel
+                isUpdated := true
+                break
+    if not isUpdated
+        array.push(clusters, newLevel)
+
+// Определение цветов для сигналов
+sellColorAboveMA200 = color.red
+sellColorBelowMA200 = color.rgb(255, 153, 153)
+buyColorAboveMA200 = color.rgb(153, 255, 153)
+buyColorBelowMA200 = color.green
+
+// Сигнал пика объема (продажи) и добавление кластера объема продаж
+if (volumePeak and rsi > rsiOverbought)
+    sellColor = close > ma200 ? sellColorAboveMA200 : sellColorBelowMA200  // Темно-красный или светло-красный
+    label.new(x=bar_index, y=high, text="S", color=sellColor, style=label.style_label_down, textcolor=color.white)
+    alert("Сигнал пика объема продаж", alert.freq_once_per_bar_close)
+    updateClusters(sellClusters, high)
+
+// Сигнал пика объема (покупки) и добавление кластера объема покупок
+if (volumePeak and rsi < rsiOversold)
+    buyColor = close > ma200 ? buyColorAboveMA200 : buyColorBelowMA200  // Светло-зеленый или темно-зеленый
+    label.new(x=bar_index, y=low, text="B", color=buyColor, style=label.style_label_up, textcolor=color.white)
+    alert("Сигнал пика объема покупок", alert.freq_once_per_bar_close)
+    updateClusters(buyClusters, low)
+
+// Функция для отображения кластеров объема
+plotClusters(clusters, color) =>
+    if array.size(clusters) > 0
+        for i = 0 to array.size(clusters) - 1
+            var float clusterLevel = array.get(clusters, i)
+            line.new(x1=bar_index - lookbackBars, y1=clusterLevel, x2=bar_index, y2=clusterLevel, color=color, width=1, style=line.style_dashed)
+
+// Отображение кластеров объема на графике
+plotClusters(buyClusters, color.green)
+plotClusters(sellClusters, color.red)
+
+// Отображение RSI
+plot(rsi, color=color.red, title="RSI")
+
+// Отображение среднего объема
+plot(averageVolume, color=color.gray, title="Average Volume")
+
+// Отображение MA 200, MA 100 и MA 60
+plot(ma200, color=color.blue, title="MA 200")
+plot(ma100, color=color.orange, title="MA 100")
+plot(ma60, color=color.purple, title="MA 60")
+
+// Отображение сигналов пикового объема с надписью "RSI"
+plotshape(series=volumePeak and rsi > rsiOverbought, location=location.abovebar, color=close > ma200 ? sellColorAboveMA200 : sellColorBelowMA200, style=shape.triangledown, size=size.small, title="Peak Volume Sell Signal", text="RSI")
+plotshape(series=volumePeak and rsi < rsiOversold, location=location.belowbar, color=close > ma200 ? buyColorAboveMA200 : buyColorBelowMA200, style=shape.triangleup, size=size.small, title="Peak Volume Buy Signal", text="RSI")
